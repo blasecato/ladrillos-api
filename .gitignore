@@ -1,0 +1,26 @@
+# Compilado
+/dist
+/node_modules
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Variables de entorno (la plantilla es .env.example)
+.env
+.env.local
+
+# Cliente Prisma generado: se regenera con `pnpm prisma:generate`
+/src/generated
+
+# Tests
+/coverage
+.eslintcache
+*.tsbuildinfo
+
+# Sistema / editores
+.DS_Store
+.idea

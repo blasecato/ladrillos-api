@@ -1,0 +1,310 @@
+// Esquema de la API de la ladrillera.
+// Refleja la base de datos existente `ladrilleraspitalito`: nombres de tabla y
+// columna se conservan con @@map/@map, y en el cliente quedan en camelCase.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Estado de una orden de venta.
+enum OrderStatus {
+  pending
+  confirmed
+  in_production
+  delivered
+  cancelled
+
+  @@map("order_status")
+}
+
+// ---------- Catalogos / lookups ----------
+
+/// CC, CE, TI, PA, NIT.
+model DocumentType {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  code String @unique
+  name String
+
+  users User[]
+
+  @@map("document_types")
+}
+
+/// admin, seller, client.
+model Role {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  code String @unique
+  name String
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+/// Categorias de ladrillo ("tipos").
+model BrickCategory {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  name String @unique
+
+  bricks Brick[]
+
+  @@map("brick_categories")
+}
+
+/// Arcilla, cemento, concreto...
+model Material {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  name String @unique
+
+  bricks Brick[]
+
+  @@map("materials")
+}
+
+/// Motivos de merma: cargue, transporte, quema, manipulacion...
+model WasteReason {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  code String @unique
+  name String
+
+  wastes BrickWaste[]
+
+  @@map("waste_reasons")
+}
+
+// ---------- Empresa y sedes ----------
+
+model Company {
+  id      BigInt  @id @default(autoincrement())
+  name    String
+  nit     String? @unique
+  email   String?
+  phone   String?
+  address String?
+  city    String?
+
+  brickYards BrickYard[]
+
+  @@map("companies")
+}
+
+/// Ladrilleras / sedes.
+model BrickYard {
+  id         BigInt   @id @default(autoincrement())
+  companyId  BigInt?  @map("company_id")
+  name       String
+  address    String?
+  city       String?
+  department String?
+  phone      String?
+  email      String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  company            Company?            @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inventory          Inventory[]
+  inventoryMovements InventoryMovement[]
+  orderItems         OrderItem[]
+  wastes             BrickWaste[]
+
+  @@map("brick_yards")
+}
+
+// ---------- Producto ----------
+
+model Brick {
+  id         BigInt   @id @default(autoincrement())
+  name       String
+  categoryId Int?     @map("category_id") @db.SmallInt
+  materialId Int?     @map("material_id") @db.SmallInt
+  /// Precio de lista.
+  unitPrice  Decimal  @default(0) @map("unit_price") @db.Decimal(12, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  category           BrickCategory?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  material           Material?           @relation(fields: [materialId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inventory          Inventory[]
+  inventoryMovements InventoryMovement[]
+  orderItems         OrderItem[]
+  wastes             BrickWaste[]
+
+  @@index([categoryId])
+  @@index([materialId])
+  @@map("bricks")
+}
+
+// ---------- Usuarios ----------
+
+/// La edad no se guarda: se deriva de `birthDate` (vista `users_with_age` en la BD).
+/// `passwordHash` queda null si la autenticacion vive en Keycloak; en ese caso
+/// `keycloakId` es el vinculo con el usuario de Keycloak.
+model User {
+  id             BigInt   @id @default(autoincrement())
+  documentTypeId Int      @map("document_type_id") @db.SmallInt
+  documentNumber String   @map("document_number")
+  fullName       String   @map("full_name")
+  email          String   @unique
+  birthDate      DateTime @map("birth_date") @db.Date
+  username       String   @unique
+  passwordHash   String?  @map("password_hash")
+  keycloakId     String?  @unique @map("keycloak_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  documentType       DocumentType        @relation(fields: [documentTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  userRoles          UserRole[]
+  /// Compras: ordenes donde el usuario es el cliente.
+  orders             Order[]             @relation("OrdenesDelCliente")
+  /// Ventas atendidas por el usuario (rol `seller`).
+  sales              Order[]             @relation("VentasDelVendedor")
+  inventoryMovements InventoryMovement[]
+  wastes             BrickWaste[]
+
+  @@unique([documentTypeId, documentNumber])
+  @@map("users")
+}
+
+/// Un usuario puede tener varios roles.
+model UserRole {
+  userId BigInt @map("user_id")
+  roleId Int    @map("role_id") @db.SmallInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role Role @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ---------- Ordenes ----------
+
+/// `userId` es el CLIENTE que compra; `sellerId` el vendedor que atendio la
+/// venta, nulo en una venta directa (el cliente compro por su cuenta).
+model Order {
+  id        BigInt      @id @default(autoincrement())
+  userId    BigInt      @map("user_id")
+  sellerId  BigInt?     @map("seller_id")
+  status    OrderStatus @default(pending)
+  orderDate DateTime    @default(now()) @map("order_date") @db.Timestamptz(6)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user               User                @relation("OrdenesDelCliente", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  seller             User?               @relation("VentasDelVendedor", fields: [sellerId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  items              OrderItem[]
+  inventoryMovements InventoryMovement[]
+  wastes             BrickWaste[]
+
+  @@index([userId])
+  @@index([sellerId])
+  @@index([orderDate])
+  @@map("orders")
+}
+
+/// Cada linea apunta a UNA sede + UN ladrillo, asi que una misma orden puede
+/// combinar varias sedes con distinta cantidad. `unitPrice` se congela al
+/// momento de la orden (el de `bricks` puede cambiar despues).
+model OrderItem {
+  id          BigInt  @id @default(autoincrement())
+  orderId     BigInt  @map("order_id")
+  brickYardId BigInt  @map("brick_yard_id")
+  brickId     BigInt  @map("brick_id")
+  /// La BD exige quantity > 0.
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  brickYard BrickYard @relation(fields: [brickYardId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brick     Brick     @relation(fields: [brickId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([orderId])
+  @@index([brickYardId])
+  @@index([brickId])
+  @@map("order_items")
+}
+
+// ---------- Inventario ----------
+
+/// Existencias actuales por sede + ladrillo: una fila unica por combinacion.
+model Inventory {
+  brickYardId BigInt   @map("brick_yard_id")
+  brickId     BigInt   @map("brick_id")
+  /// La BD exige quantity >= 0.
+  quantity    Int      @default(0)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  brickYard BrickYard @relation(fields: [brickYardId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  brick     Brick     @relation(fields: [brickId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([brickYardId, brickId])
+  @@map("inventory")
+}
+
+/// Libro de movimientos: historial de entradas y salidas para auditar y
+/// reconstruir el inventario.
+model InventoryMovement {
+  id          BigInt   @id @default(autoincrement())
+  brickYardId BigInt   @map("brick_yard_id")
+  brickId     BigInt   @map("brick_id")
+  /// + produccion/entrada, - venta/salida/merma.
+  change      Int
+  /// 'production' | 'sale' | 'adjustment' | 'waste'
+  reason      String
+  orderId     BigInt?  @map("order_id")
+  createdBy   BigInt?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  brickYard BrickYard   @relation(fields: [brickYardId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brick     Brick       @relation(fields: [brickId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order     Order?      @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creator   User?       @relation(fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  waste     BrickWaste?
+
+  @@index([brickYardId, brickId])
+  @@map("inventory_movements")
+}
+
+// ---------- Merma ----------
+
+/// Ladrillos danados o perdidos: cuantos, de que tipo, en que sede y por que.
+/// Cada registro descuenta existencias y deja su fila en `inventory_movements`
+/// con reason='waste' (`movementId`), asi el libro sigue siendo la unica
+/// fuente de verdad del inventario. `unitPrice` se congela para poder valorar
+/// la perdida aunque el precio del ladrillo cambie despues.
+model BrickWaste {
+  id          BigInt   @id @default(autoincrement())
+  brickYardId BigInt   @map("brick_yard_id")
+  brickId     BigInt   @map("brick_id")
+  /// La BD exige quantity > 0.
+  quantity    Int
+  reasonId    Int      @map("reason_id") @db.SmallInt
+  /// Detalle libre del motivo ("se cayo la estiba en el cargue").
+  notes       String?
+  /// Orden en cuyo cargue/despacho ocurrio la merma, si aplica.
+  orderId     BigInt?  @map("order_id")
+  /// Movimiento de inventario que genero este registro.
+  movementId  BigInt?  @unique @map("movement_id")
+  unitPrice   Decimal  @default(0) @map("unit_price") @db.Decimal(12, 2)
+  /// Cuando ocurrio el dano (puede reportarse despues).
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdBy   BigInt?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  brickYard BrickYard          @relation(fields: [brickYardId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brick     Brick              @relation(fields: [brickId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reason    WasteReason        @relation(fields: [reasonId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order     Order?             @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  movement  InventoryMovement? @relation(fields: [movementId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  creator   User?              @relation(fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([brickYardId, brickId])
+  @@index([reasonId])
+  @@index([occurredAt])
+  @@map("brick_waste")
+}

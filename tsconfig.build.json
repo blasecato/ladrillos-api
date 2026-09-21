@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  // `prisma/` y `prisma.config.ts` son herramientas de CLI, no parte del bundle:
+  // si entran al build, `rootDir` se mueve y `dist/main.js` cambia de sitio.
+  "exclude": ["node_modules", "test", "dist", "prisma", "prisma.config.ts", "**/*spec.ts"]
+}

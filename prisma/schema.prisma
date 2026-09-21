@@ -10,10 +10,10 @@ generator client {
   moduleFormat = "cjs"
 }
 
+// Prisma 7 ya no acepta `url` ni `directUrl` aqui: las conexiones viven en
+// `prisma.config.ts` (CLI) y en el driver adapter (runtime).
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 /// Estado de una orden de venta.

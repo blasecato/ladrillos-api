@@ -56,10 +56,38 @@ export class BrickYardEntity {
   email!: string | null;
 
   @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'sedes/porcelana.webp',
+    description:
+      'Ruta de la foto en el object storage; el front arma la URL. Nula si no hay foto.',
+  })
+  photoKey!: string | null;
+
+  @ApiProperty({
     example: 4,
-    description: 'Referencias distintas con existencias en la sede',
+    description: 'Referencias con fila de inventario en la sede',
   })
   brickCount!: number;
+
+  @ApiProperty({
+    example: 3,
+    description: 'Referencias con existencias (quantity > 0) en la sede',
+  })
+  inStockCount!: number;
+
+  @ApiProperty({
+    example: 130550,
+    description: 'Unidades disponibles hoy en la sede (suma de `inventory`)',
+  })
+  totalStock!: number;
+
+  @ApiProperty({
+    type: [String],
+    example: ['Bloques divisorios', 'Pisos y calados'],
+    description: 'Categorias de ladrillo con existencias en la sede',
+  })
+  categories!: string[];
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: Date;
@@ -101,6 +129,14 @@ export class CreateBrickYardDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @ApiPropertyOptional({
+    example: 'sedes/porcelana.webp',
+    description: 'Ruta de la foto ya subida al object storage',
+  })
+  @IsString()
+  @IsOptional()
+  photoKey?: string;
 }
 
 export class UpdateBrickYardDto extends PartialType(CreateBrickYardDto) {}

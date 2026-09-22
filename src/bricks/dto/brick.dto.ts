@@ -45,6 +45,24 @@ export class BrickEntity {
   @ApiProperty({ example: 1450.0, description: 'Precio de lista' })
   unitPrice!: number;
 
+  @ApiProperty({ type: Number, nullable: true, example: 330, description: 'Largo en mm' })
+  lengthMm!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 120, description: 'Ancho en mm' })
+  widthMm!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 230, description: 'Alto en mm' })
+  heightMm!: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'ladrillos/bloque-12.webp',
+    description:
+      'Ruta de la foto en el object storage; el front arma la URL. Nula si no hay foto.',
+  })
+  photoKey!: string | null;
+
   @ApiProperty({ type: [BrickStockDto], description: 'Existencias por sede' })
   stock!: BrickStockDto[];
 
@@ -81,6 +99,35 @@ export class CreateBrickDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   unitPrice!: number;
+
+  @ApiPropertyOptional({ example: 330, description: 'Largo en milimetros' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  lengthMm?: number;
+
+  @ApiPropertyOptional({ example: 120, description: 'Ancho en milimetros' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  widthMm?: number;
+
+  @ApiPropertyOptional({ example: 230, description: 'Alto en milimetros' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  heightMm?: number;
+
+  @ApiPropertyOptional({
+    example: 'ladrillos/bloque-12.webp',
+    description: 'Ruta de la foto ya subida al object storage',
+  })
+  @IsString()
+  @IsOptional()
+  photoKey?: string;
 }
 
 export class UpdateBrickDto extends PartialType(CreateBrickDto) {}

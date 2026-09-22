@@ -108,6 +108,10 @@ model BrickYard {
   department String?
   phone      String?
   email      String?
+  /// Ruta de la foto en el object storage ("sedes/porcelana.webp"), NO los
+  /// bytes: el archivo vive fuera de la BD y el front arma la URL. Nula
+  /// mientras la sede no tenga foto.
+  photoKey   String?  @map("photo_key")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   company            Company?            @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -128,6 +132,13 @@ model Brick {
   materialId Int?     @map("material_id") @db.SmallInt
   /// Precio de lista.
   unitPrice  Decimal  @default(0) @map("unit_price") @db.Decimal(12, 2)
+  /// Medidas en MILIMETROS enteros: evitan decimales y se formatean a gusto
+  /// ("330 x 120 x 230 mm" o "33 x 12 x 23 cm"). Nulas mientras no se sepan.
+  lengthMm   Int?     @map("length_mm")
+  widthMm    Int?     @map("width_mm")
+  heightMm   Int?     @map("height_mm")
+  /// Ruta de la foto en el object storage ("ladrillos/bloque-12.webp").
+  photoKey   String?  @map("photo_key")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   category           BrickCategory?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)

@@ -14,6 +14,14 @@ import {
 const INCLUDE = {
   company: { select: { name: true, nit: true } },
   _count: { select: { inventory: true } },
+  // Las existencias de una sede son pocas filas (una por referencia), asi que
+  // se traen y se agregan en memoria: evita un groupBy extra por sede.
+  inventory: {
+    select: {
+      quantity: true,
+      brick: { select: { category: { select: { name: true } } } },
+    },
+  },
 } as const;
 
 type BrickYardConRelaciones = Prisma.BrickYardGetPayload<{
@@ -107,7 +115,19 @@ export class BrickYardsService {
 }
 
 function toEntity(brickYard: BrickYardConRelaciones): BrickYardEntity {
-  const { company, _count, ...campos } = brickYard;
+  const { company, _count, inventory, ...campos } = brickYard;
+
+  // Solo cuenta lo que hoy esta en piso: una fila en 0 no es una referencia
+  // disponible ni aporta unidades.
+  const conExistencias = inventory.filter((fila) => fila.quantity > 0);
+
+  const categories = [
+    ...new Set(
+      conExistencias
+        .map((fila) => fila.brick.category?.name)
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 
   return {
     ...campos,
@@ -117,5 +137,8 @@ function toEntity(brickYard: BrickYardConRelaciones): BrickYardEntity {
     companyName: company?.name ?? null,
     companyNit: company?.nit ?? null,
     brickCount: _count.inventory,
+    inStockCount: conExistencias.length,
+    totalStock: conExistencias.reduce((acc, fila) => acc + fila.quantity, 0),
+    categories,
   };
 }
